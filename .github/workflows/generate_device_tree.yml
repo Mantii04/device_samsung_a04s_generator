@@ -21,28 +21,63 @@ jobs:
             lz4 \
             python3 \
             git \
-            megatools
+            megatools \
+            p7zip-full
 
-      - name: Download firmware from Mega
+      - name: Download firmware from Mega (with retries)
         run: |
-          megatools dl --path . 'https://mega.nz/file/nAFiRCKB#p6iDVa0eL1E0JCsspVjkYTiCXPqR3ImAg_jGsgPbAMY'
+          # Download with retry and rate limit
+          megatools dl \
+            --num-retries 5 \
+            --limit-rate 2M \
+            --path . \
+            'https://mega.nz/file/nAFiRCKB#p6iDVa0eL1E0JCsspVjkYTiCXPqR3ImAg_jGsgPbAMY'
+          echo "Download completed. Listing files:"
+          ls -la
+          # Check file size (print)
+          FW_ZIP=$(ls *.zip 2>/dev/null | head -n1)
+          if [ -n "$FW_ZIP" ]; then
+            echo "Downloaded file: $FW_ZIP"
+            du -h "$FW_ZIP"
+            # Check if it's a valid zip
+            if file "$FW_ZIP" | grep -q "Zip archive"; then
+              echo "ZIP is valid."
+            else
+              echo "WARNING: File does not appear to be a valid ZIP. File type:"
+              file "$FW_ZIP"
+              exit 1
+            fi
+          else
+            echo "No ZIP file found after download!"
+            exit 1
+          fi
+
+      - name: Extract firmware zip (using 7z)
+        run: |
+          FW_ZIP=$(ls *.zip 2>/dev/null | head -n1)
+          if [ -z "$FW_ZIP" ]; then
+            echo "No ZIP file to extract!"
+            exit 1
+          fi
+          echo "Extracting $FW_ZIP with 7z..."
+          7z x "$FW_ZIP" -y
+          # After extraction, list all files
+          echo "Extracted files:"
           ls -la
 
-      - name: Extract firmware zip and AP tarball
+      - name: Find AP tarball and extract it
         run: |
-          if ls *.zip 1> /dev/null 2>&1; then
-            unzip *.zip
-          fi
           AP_TAR=$(ls AP_*.tar.md5 2>/dev/null | head -n1)
           if [ -z "$AP_TAR" ]; then
             AP_TAR=$(ls AP_*.tar 2>/dev/null | head -n1)
           fi
           if [ -z "$AP_TAR" ]; then
-            echo "No AP tarball found!"
+            echo "No AP tarball found! Files present:"
+            ls -la
             exit 1
           fi
           echo "Extracting $AP_TAR"
-          tar -xvf $AP_TAR
+          tar -xvf "$AP_TAR"
           ls -la
 
       - name: Decompress .lz4 files
@@ -64,7 +99,7 @@ jobs:
             echo "system.img found"
           elif [ -f super.img ]; then
             echo "ERROR: super.img found but we need a separate system.img."
-            echo "Your firmware uses a super partition. Please upload a firmware that has system.img directly (or extract it yourself)."
+            echo "Your firmware uses a super partition. Please upload a firmware that has system.img directly."
             exit 1
           else
             echo "No system.img or super.img found!"
