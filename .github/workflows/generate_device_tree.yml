@@ -18,21 +18,20 @@ jobs:
             android-sdk-libsparse-utils \
             unzip \
             wget \
+            curl \
             lz4 \
             python3 \
             git \
-            p7zip-full \
-            python3-pip
+            p7zip-full
 
-      - name: Install latest gdown from source
+      - name: Download GDrive-get script
         run: |
-          pip3 install --upgrade gdown
+          curl -O https://raw.githubusercontent.com/ashish-kus/GDrive-get/main/gdrive-download.sh
+          chmod +x gdrive-download.sh
 
-      - name: Download firmware from Google Drive using gdown with fuzzy
+      - name: Download firmware from Google Drive using GDrive-get
         run: |
-          FILE_ID="1zKBfFW1eU2gMU39R5QJhOSzkTAlJGn7U"
-          echo "Downloading file ID: $FILE_ID using gdown --fuzzy"
-          gdown --fuzzy "https://drive.google.com/uc?id=${FILE_ID}" -O firmware.zip
+          ./gdrive-download.sh "https://drive.google.com/file/d/1zKBfFW1eU2gMU39R5QJhOSzkTAlJGn7U/view?usp=drive_link" firmware.zip
           echo "Download completed. File size:"
           du -h firmware.zip
           ls -la
