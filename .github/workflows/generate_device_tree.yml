@@ -29,7 +29,7 @@ jobs:
         run: |
           FILE_ID="1zKBfFW1eU2gMU39R5QJhOSzkTAlJGn7U"
           echo "Downloading file ID: $FILE_ID"
-          gdown "https://drive.google.com/uc?id=${FILE_ID}" -O firmware.zip --fuzzy
+          gdown --continue "https://drive.google.com/uc?id=${FILE_ID}" -O firmware.zip
           echo "Download completed. File size:"
           du -h firmware.zip
           ls -la
@@ -40,7 +40,6 @@ jobs:
             echo "ERROR: firmware.zip not found!"
             exit 1
           fi
-          # Check if it's a valid zip
           if 7z t firmware.zip >/dev/null 2>&1; then
             echo "ZIP archive is valid."
           else
@@ -110,4 +109,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: device_tree_a04s
-          path: generated_device_tree/
+          path: generated_device_tree/=
