@@ -21,50 +21,37 @@ jobs:
             lz4 \
             python3 \
             git \
-            megatools \
-            p7zip-full
+            p7zip-full \
+            python3-pip
+          pip3 install gdown
 
-      - name: Download firmware from Mega (with retry and verification)
+      - name: Download firmware from Google Drive using gdown
         run: |
-          MAX_RETRIES=3
-          RETRY_COUNT=0
-          DL_URL='https://mega.nz/file/nAFiRCKB#p6iDVa0eL1E0JCsspVjkYTiCXPqR3ImAg_jGsgPbAMY'
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            echo "Download attempt $((RETRY_COUNT+1)) ..."
-            megatools dl --path . "$DL_URL"
-            # Find the downloaded zip file (there should be one)
-            FW_ZIP=$(ls *.zip 2>/dev/null | head -n1)
-            if [ -n "$FW_ZIP" ]; then
-              echo "Downloaded file: $FW_ZIP ($(du -h "$FW_ZIP" | cut -f1))"
-              # Verify archive
-              if 7z t "$FW_ZIP" >/dev/null 2>&1; then
-                echo "Archive is valid."
-                break
-              else
-                echo "Archive corrupted, deleting and retrying..."
-                rm -f "$FW_ZIP"
-              fi
-            else
-              echo "No zip file found after download."
-            fi
-            RETRY_COUNT=$((RETRY_COUNT+1))
-            sleep 3
-          done
-          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "Failed after $MAX_RETRIES attempts."
-            exit 1
-          fi
+          FILE_ID="1zKBfFW1eU2gMU39R5QJhOSzkTAlJGn7U"
+          echo "Downloading file ID: $FILE_ID"
+          gdown "https://drive.google.com/uc?id=${FILE_ID}" -O firmware.zip --fuzzy
+          echo "Download completed. File size:"
+          du -h firmware.zip
           ls -la
 
-      - name: Extract firmware zip (using 7z)
+      - name: Verify downloaded file
         run: |
-          FW_ZIP=$(ls *.zip 2>/dev/null | head -n1)
-          if [ -z "$FW_ZIP" ]; then
-            echo "No ZIP file to extract!"
+          if [ ! -f firmware.zip ]; then
+            echo "ERROR: firmware.zip not found!"
             exit 1
           fi
-          echo "Extracting $FW_ZIP with 7z..."
-          7z x "$FW_ZIP" -y
+          # Check if it's a valid zip
+          if 7z t firmware.zip >/dev/null 2>&1; then
+            echo "ZIP archive is valid."
+          else
+            echo "ERROR: ZIP archive is corrupted or incomplete!"
+            file firmware.zip
+            exit 1
+          fi
+
+      - name: Extract firmware zip
+        run: |
+          7z x firmware.zip -y
           ls -la
 
       - name: Find AP tarball and extract it
