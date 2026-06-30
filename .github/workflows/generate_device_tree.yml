@@ -21,15 +21,15 @@ jobs:
             lz4 \
             python3 \
             git \
-            p7zip-full \
-            python3-pip
-          pip3 install gdown
+            p7zip-full
 
-      - name: Download firmware from Google Drive using gdown
+      - name: Download firmware from Google Drive using wget
         run: |
           FILE_ID="1zKBfFW1eU2gMU39R5QJhOSzkTAlJGn7U"
           echo "Downloading file ID: $FILE_ID"
-          gdown --continue "https://drive.google.com/uc?id=${FILE_ID}" -O firmware.zip
+          wget --no-check-certificate --content-disposition \
+            "https://drive.google.com/uc?export=download&id=${FILE_ID}&confirm=t" \
+            -O firmware.zip
           echo "Download completed. File size:"
           du -h firmware.zip
           ls -la
@@ -109,4 +109,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: device_tree_a04s
-          path: generated_device_tree/=
+          path: generated_device_tree/
