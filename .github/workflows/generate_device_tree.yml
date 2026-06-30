@@ -24,33 +24,37 @@ jobs:
             megatools \
             p7zip-full
 
-      - name: Download firmware from Mega (with retries)
+      - name: Download firmware from Mega (with retry and verification)
         run: |
-          # Download with retry and rate limit
-          megatools dl \
-            --num-retries 5 \
-            --limit-rate 2M \
-            --path . \
-            'https://mega.nz/file/nAFiRCKB#p6iDVa0eL1E0JCsspVjkYTiCXPqR3ImAg_jGsgPbAMY'
-          echo "Download completed. Listing files:"
-          ls -la
-          # Check file size (print)
-          FW_ZIP=$(ls *.zip 2>/dev/null | head -n1)
-          if [ -n "$FW_ZIP" ]; then
-            echo "Downloaded file: $FW_ZIP"
-            du -h "$FW_ZIP"
-            # Check if it's a valid zip
-            if file "$FW_ZIP" | grep -q "Zip archive"; then
-              echo "ZIP is valid."
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          DL_URL='https://mega.nz/file/nAFiRCKB#p6iDVa0eL1E0JCsspVjkYTiCXPqR3ImAg_jGsgPbAMY'
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Download attempt $((RETRY_COUNT+1)) ..."
+            megatools dl --path . "$DL_URL"
+            # Find the downloaded zip file (there should be one)
+            FW_ZIP=$(ls *.zip 2>/dev/null | head -n1)
+            if [ -n "$FW_ZIP" ]; then
+              echo "Downloaded file: $FW_ZIP ($(du -h "$FW_ZIP" | cut -f1))"
+              # Verify archive
+              if 7z t "$FW_ZIP" >/dev/null 2>&1; then
+                echo "Archive is valid."
+                break
+              else
+                echo "Archive corrupted, deleting and retrying..."
+                rm -f "$FW_ZIP"
+              fi
             else
-              echo "WARNING: File does not appear to be a valid ZIP. File type:"
-              file "$FW_ZIP"
-              exit 1
+              echo "No zip file found after download."
             fi
-          else
-            echo "No ZIP file found after download!"
+            RETRY_COUNT=$((RETRY_COUNT+1))
+            sleep 3
+          done
+          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+            echo "Failed after $MAX_RETRIES attempts."
             exit 1
           fi
+          ls -la
 
       - name: Extract firmware zip (using 7z)
         run: |
@@ -61,8 +65,6 @@ jobs:
           fi
           echo "Extracting $FW_ZIP with 7z..."
           7z x "$FW_ZIP" -y
-          # After extraction, list all files
-          echo "Extracted files:"
           ls -la
 
       - name: Find AP tarball and extract it
