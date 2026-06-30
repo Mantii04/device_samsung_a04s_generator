@@ -1,7 +1,7 @@
 name: Generate Device Tree for SM-A047F
 
 on:
-  workflow_dispatch:  # You click "Run" manually
+  workflow_dispatch:
 
 jobs:
   build:
@@ -10,7 +10,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install required tools
+      - name: Install tools
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -18,7 +18,6 @@ jobs:
             android-sdk-libsparse-utils \
             unzip \
             wget \
-            cpio \
             lz4 \
             python3 \
             git \
@@ -29,94 +28,59 @@ jobs:
           megatools dl --path . 'https://mega.nz/file/nAFiRCKB#p6iDVa0eL1E0JCsspVjkYTiCXPqR3ImAg_jGsgPbAMY'
           ls -la
 
-      - name: Extract firmware (tar.md5)
+      - name: Extract firmware zip and AP tarball
         run: |
-          # Find the tar.md5 file (might be zipped first)
           if ls *.zip 1> /dev/null 2>&1; then
             unzip *.zip
           fi
-          TAR=$(ls *.tar.md5 2>/dev/null | head -n1)
-          if [ -z "$TAR" ]; then
-            TAR=$(ls *.tar 2>/dev/null | head -n1)
+          AP_TAR=$(ls AP_*.tar.md5 2>/dev/null | head -n1)
+          if [ -z "$AP_TAR" ]; then
+            AP_TAR=$(ls AP_*.tar 2>/dev/null | head -n1)
           fi
-          echo "Extracting $TAR"
-          tar -xvf $TAR
+          if [ -z "$AP_TAR" ]; then
+            echo "No AP tarball found!"
+            exit 1
+          fi
+          echo "Extracting $AP_TAR"
+          tar -xvf $AP_TAR
           ls -la
 
-      - name: Extract boot.img and super.img
+      - name: Decompress .lz4 files
         run: |
-          # Usually AP_* contains boot.img and super.img
-          if ls AP_*.tar.md5 1> /dev/null 2>&1; then
-            tar -xvf AP_*.tar.md5
+          for f in *.lz4; do
+            if [ -f "$f" ]; then
+              lz4 -d "$f" "$(basename "$f" .lz4)"
+            fi
+          done
+          ls -la
+
+      - name: Find boot.img and system.img
+        run: |
+          if [ ! -f boot.img ]; then
+            echo "boot.img not found!"
+            exit 1
           fi
-          if ls AP_*.tar 1> /dev/null 2>&1; then
-            tar -xvf AP_*.tar
-          fi
-          # If super.img is sparse, convert to raw
-          if [ -f super.img ]; then
-            sudo simg2img super.img super_raw.img
-            mv super_raw.img super.img
+          if [ -f system.img ]; then
+            echo "system.img found"
+          elif [ -f super.img ]; then
+            echo "ERROR: super.img found but we need a separate system.img."
+            echo "Your firmware uses a super partition. Please upload a firmware that has system.img directly (or extract it yourself)."
+            exit 1
+          else
+            echo "No system.img or super.img found!"
+            exit 1
           fi
 
       - name: Clone mkvendor (Android Dump tool)
         run: |
           git clone https://github.com/phhusson/vendor_android_dump.git
-          cd vendor_android_dump
-          # Fix shebangs if needed
-          chmod +x mkvendor.sh
+          chmod +x vendor_android_dump/mkvendor.sh
 
-      - name: Generate device tree using mkvendor
+      - name: Generate device tree
         run: |
           cd vendor_android_dump
-          # mkvendor.sh syntax: ./mkvendor.sh -d <device> -b <boot.img> -s <system.img>
-          # If you have super.img, we need to extract system.img from it first
-          if [ -f ../super.img ]; then
-            echo "Extracting system.img from super.img"
-            sudo lpunpack ../super.img ./super_unpacked/
-            SYSTEM_PATH="./super_unpacked/system.img"
-          else
-            SYSTEM_PATH="../system.img"
-          fi
-          
-          if [ ! -f ../boot.img ]; then
-            echo "ERROR: boot.img not found!"
-            exit 1
-          fi
-          
-          ./mkvendor.sh -d a04s -b ../boot.img -s $SYSTEM_PATH
-          
-          # mkvendor outputs to device/samsung/a04s
-          cp -r device/samsung/a04s ../../generated_device_tree
-
-      - name: Extract DTB from boot.img for hardware config
-        run: |
-          # Unpack boot.img to get the kernel
-          mkdir boot_unpack
-          cd boot_unpack
-          unpackbootimg -i ../boot.img
-          # Find the DTB (usually in the kernel or separate)
-          if [ -f kernel ]; then
-            # Extract DTB from kernel (zImage/dtb)
-            python3 -c "
-import sys
-with open('kernel', 'rb') as f:
-    data = f.read()
-    # Find DTB magic (0xD00DFEED)
-    idx = data.find(b'\xed\xfe\x0d\xd0')
-    if idx != -1:
-        with open('kernel_dtb.dtb', 'wb') as out:
-            out.write(data[idx:])
-            print('Extracted DTB at offset', idx)
-    else:
-        print('DTB not found in kernel')
-"
-          fi
-          # Decompile DTB if found
-          if [ -f kernel_dtb.dtb ]; then
-            dtc -I dtb -O dts kernel_dtb.dtb -o kernel.dts
-            cp kernel.dts ../generated_device_tree/
-          fi
-          cd ..
+          ./mkvendor.sh -d a04s -b ../boot.img -s ../system.img
+          cp -r device/samsung/a04s ../generated_device_tree
 
       - name: Upload generated device tree as artifact
         uses: actions/upload-artifact@v4
